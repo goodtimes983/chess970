@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+
+<html>
+<head>
+<meta charset="UTF-8">
+<title>Stockfish Bundled Demo</title>
+
+<style>
+body { font-family: Arial; text-align:center; }
+#board {
+  display:grid;
+  grid-template-columns:repeat(8,60px);
+  grid-template-rows:repeat(8,60px);
+  width:480px;
+  margin:20px auto;
+}
+.square {
+  width:60px;
+  height:60px;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  font-size:32px;
+  cursor:pointer;
+}
+.light { background:#f0d9b5; }
+.dark { background:#b58863; }
+#status { margin:10px; font-size:18px; }
+</style>
+
+</head>
+
+<body>
+
+<h2>Stockfish Bundled (No Downloads)</h2>
+<div id="board"></div>
+<div id="status">Loading engine...</div>
+
+<script>
+// =====================
+// BOARD
+// =====================
+let board = Array(8).fill(null).map(()=>Array(8).fill(null));
+let playerPlaced = false;
+
+// =====================
+// STOCKFISH (BUNDLED)
+// =====================
+// Worker-safe CDN build
+const engine = new Worker(
+  "https://cdn.jsdelivr.net/npm/stockfish@16.0.0/src/stockfish.js"
+);
+
+document.getElementById("status").innerText = "Engine loaded";
+
+// =====================
+// DRAW BOARD
+// =====================
+const boardDiv = document.getElementById("board");
+
+function drawBoard() {
+  boardDiv.innerHTML = "";
+  for (let r=0;r<8;r++){
+    for (let c=0;c<8;c++){
+      let sq=document.createElement("div");
+      sq.className="square "+((r+c)%2?"dark":"light");
+      sq.innerText=board[r][c]||"";
+      sq.onclick=()=>placeKing(r,c);
+      boardDiv.appendChild(sq);
+    }
+  }
+}
+
+// =====================
+// PLACE KINGS
+// =====================
+function placeKing(r,c){
+  if(playerPlaced) return;
+
+  board[r][c]="K";
+  playerPlaced=true;
+
+  // engine king
+  let empty=[];
+  for(let i=0;i<8;i++){
+    for(let j=0;j<8;j++){
+      if(!board[i][j]) empty.push([i,j]);
+    }
+  }
+
+  let [er,ec]=empty[Math.floor(Math.random()*empty.length)];
+  board[er][ec]="k";
+
+  drawBoard();
+  evaluate();
+}
+
+// =====================
+// FEN
+// =====================
+function toFEN(){
+  let fen="";
+  for(let r=0;r<8;r++){
+    let empty=0;
+    for(let c=0;c<8;c++){
+      let p=board[r][c];
+      if(!p) empty++;
+      else {
+        if(empty){fen+=empty;empty=0;}
+        fen+=p;
+      }
+    }
+    if(empty)fen+=empty;
+    if(r!==7)fen+="/";
+  }
+  return fen+" w - - 0 1";
+}
+
+// =====================
+// EVALUATE
+// =====================
+function evaluate(){
+  let fen=toFEN();
+  document.getElementById("status").innerText="Evaluating...";
+
+  engine.postMessage("position fen "+fen);
+  engine.postMessage("go depth 10");
+
+  engine.onmessage=(e)=>{
+    let line=e.data;
+
+    if(line.includes("score cp")){
+      let m=line.match(/score cp (-?\d+)/);
+      if(m){
+        let score=m[1]/100;
+
+        document.getElementById("status").innerText=
+          "Eval: "+score.toFixed(2);
+      }
+    }
+  };
+}
+
+drawBoard();
+</script>
+
+</body>
+</html>
