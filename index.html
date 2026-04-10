@@ -3,7 +3,7 @@
 <html>
 <head>
 <meta charset="UTF-8">
-<title>Stockfish Bundled Demo</title>
+<title>Stockfish CDN Fixed Attempt</title>
 
 <style>
 body { font-family: Arial; text-align:center; }
@@ -32,7 +32,7 @@ body { font-family: Arial; text-align:center; }
 
 <body>
 
-<h2>Stockfish Bundled (No Downloads)</h2>
+<h2>Stockfish CDN Attempt (Fixed Loader)</h2>
 <div id="board"></div>
 <div id="status">Loading engine...</div>
 
@@ -44,17 +44,51 @@ let board = Array(8).fill(null).map(()=>Array(8).fill(null));
 let playerPlaced = false;
 
 // =====================
-// STOCKFISH (BUNDLED)
+// STOCKFISH LOADER (FIXED)
 // =====================
-// Worker-safe CDN build
-const engine = new Worker(
-  "https://cdn.jsdelivr.net/npm/stockfish@16.0.0/src/stockfish.js"
-);
 
-document.getElementById("status").innerText = "Engine loaded";
+// We DON'T directly trust Worker(CDN URL)
+// Instead we dynamically inject a script and let it create itself safely
+
+let engine;
+
+function loadStockfish() {
+  return new Promise((resolve, reject) => {
+
+    const script = document.createElement("script");
+    script.src = "https://unpkg.com/stockfish.js/stockfish.js";
+
+    script.onload = () => {
+      try {
+        // stockfish.js exposes a global factory function
+        engine = STOCKFISH();
+
+        document.getElementById("status").innerText =
+          "Engine loaded (CDN)";
+
+        resolve(engine);
+      } catch (e) {
+        reject(e);
+      }
+    };
+
+    script.onerror = () => reject("Failed to load Stockfish CDN");
+
+    document.body.appendChild(script);
+  });
+}
+
+// Initialize engine
+loadStockfish().then(() => {
+  drawBoard();
+}).catch(err => {
+  document.getElementById("status").innerText =
+    "Engine failed to load ❌ (use local stockfish.js instead)";
+  console.error(err);
+});
 
 // =====================
-// DRAW BOARD
+// BOARD UI
 // =====================
 const boardDiv = document.getElementById("board");
 
@@ -80,7 +114,6 @@ function placeKing(r,c){
   board[r][c]="K";
   playerPlaced=true;
 
-  // engine king
   let empty=[];
   for(let i=0;i<8;i++){
     for(let j=0;j<8;j++){
@@ -117,31 +150,32 @@ function toFEN(){
 }
 
 // =====================
-// EVALUATE
+// EVAL
 // =====================
 function evaluate(){
   let fen=toFEN();
   document.getElementById("status").innerText="Evaluating...";
 
+  if(!engine){
+    document.getElementById("status").innerText="Engine not ready";
+    return;
+  }
+
   engine.postMessage("position fen "+fen);
   engine.postMessage("go depth 10");
 
-  engine.onmessage=(e)=>{
-    let line=e.data;
-
+  engine.onmessage = function(line){
     if(line.includes("score cp")){
       let m=line.match(/score cp (-?\d+)/);
       if(m){
         let score=m[1]/100;
-
-        document.getElementById("status").innerText=
+        document.getElementById("status").innerText =
           "Eval: "+score.toFixed(2);
       }
     }
   };
 }
 
-drawBoard();
 </script>
 
 </body>
